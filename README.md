@@ -1,6 +1,4 @@
 # SCL - Search Container Logs
-[![Go Report Card](https://goreportcard.com/badge/github.com/bnema/scl)](https://goreportcard.com/report/github.com/bnema/scl)
-[![Go Reference](https://pkg.go.dev/badge/github.com/bnema/scl.svg)](https://pkg.go.dev/github.com/bnema/scl)
 
 A simple CLI tool to search through logs of all running containers simultaneously and as fast as possible.
 
@@ -48,4 +46,3 @@ scl "error" --follow --tail 100 --since 1h
 - `--follow` or `-f`: Follow log output in real-time
 - `--tail` or `-t`: Number of lines to show from the end of logs
 - `--since` or `-s`: Show logs since duration (e.g., 1h, 30m, 24h)
-```
