@@ -26,6 +26,7 @@ var (
 	pattern     string
 	sincePeriod string
 	tailLines   int
+	follow      bool
 
 	// Styling
 	styles = struct {
@@ -48,12 +49,32 @@ var (
 		Use:   "scl [pattern]",
 		Short: "Search Container Logs - search through all running Docker container logs",
 		Long:  `Search Container Logs (scl) allows you to search through the logs of all running Docker containers for a specific pattern.`,
-		Example: `  scl "App not found"
-  scl "App not found" --since 1h
-  scl "App not found" --tail 100`,
-		Args: cobra.ExactArgs(1),
+		Example: `  scl --follow
+  scl --tail 100
+  scl --since 1h
+  scl --follow --tail 100
+  scl --follow --since 1h
+  scl --tail 100 --since 1h
+  scl --follow --tail 100 --since 1h
+  scl "error"
+  scl "error" --follow
+  scl "error" --tail 100
+  scl "error" --since 1h
+  scl "error" --follow --tail 100
+  scl "error" --follow --since 1h
+  scl "error" --tail 100 --since 1h
+  scl "error" --follow --tail 100 --since 1h`,
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			pattern = args[0]
+			if len(args) > 1 {
+				return fmt.Errorf("only one pattern argument is allowed")
+			}
+			if len(args) == 1 {
+				pattern = args[0]
+			}
+			if pattern == "" && !follow && tailLines == 0 && sincePeriod == "" {
+				return fmt.Errorf("at least one of: pattern, --follow, --tail, or --since is required")
+			}
 			return runSearch()
 		},
 	}
@@ -62,6 +83,7 @@ var (
 func init() {
 	rootCmd.Flags().StringVarP(&sincePeriod, "since", "s", "", "Show logs since duration (e.g., 1h, 30m, 24h)")
 	rootCmd.Flags().IntVarP(&tailLines, "tail", "t", 0, "Number of lines to show from the end of logs (0 for all)")
+	rootCmd.Flags().BoolVarP(&follow, "follow", "f", false, "Follow log output in real time")
 	rootCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
 		if sincePeriod != "" {
 			if !strings.HasSuffix(sincePeriod, "h") &&
@@ -93,6 +115,22 @@ func runSearch() error {
 	results := make(chan Result)
 	var wg sync.WaitGroup
 
+	// Print results in real-time when following
+	if follow {
+		go func() {
+			for result := range results {
+				header := fmt.Sprintf("%s", result.ContainerName)
+				fmt.Println(styles.containerHeader.Render(header))
+				line := fmt.Sprintf("[%s] Line %d: %s",
+					result.ContainerID[:12],
+					result.LineNum,
+					result.Line)
+				fmt.Println(styles.resultLine.Render(line))
+				fmt.Println(styles.separator.Render(strings.Repeat("-", 60)))
+			}
+		}()
+	}
+
 	for _, container := range containers {
 		if container == "" {
 			continue
@@ -107,6 +145,13 @@ func runSearch() error {
 		}(containerID, containerName)
 	}
 
+	// If following, wait indefinitely
+	if follow {
+		wg.Wait()
+		return nil
+	}
+
+	// Original batch processing logic
 	go func() {
 		wg.Wait()
 		close(results)
@@ -122,7 +167,7 @@ func runSearch() error {
 		totalMatches++
 	}
 
-	// Print results
+	// Print batch results
 	for containerName, results := range containerResults {
 		header := fmt.Sprintf("%s (%d matches)", containerName, len(results))
 		fmt.Println(styles.containerHeader.Render(header))
@@ -196,6 +241,9 @@ func searchContainerLogs(containerID, containerName, pattern string, results cha
 
 func getDockerArgs(containerID string) []string {
 	cmdArgs := []string{"logs"}
+	if follow {
+		cmdArgs = append(cmdArgs, "--follow")
+	}
 	if sincePeriod != "" {
 		cmdArgs = append(cmdArgs, "--since", sincePeriod)
 	}
