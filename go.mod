@@ -1,4 +1,4 @@
-module sacl
+module github.com/bnema/scl
 
 go 1.23.3
 
